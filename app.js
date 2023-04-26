@@ -9,19 +9,25 @@ const wss = new WebSocket.Server({ server });
 let users = new Map();
 
 wss.on('connection', (ws) => {
+  const userId = uuid.v4();
+  ws.send(JSON.stringify({ type: 'register', id: userId }));
+
   ws.on('message', (message) => {
     const data = JSON.parse(message);
 
     switch (data.type) {
       case 'register':
-        const userId = uuid.v4();
-        users.set(userId, ws);
-        ws.send(JSON.stringify({ type: 'register', id: userId }));
+        if (users.has(data.username)) {
+          ws.send(JSON.stringify({ type: 'register', status: 'failed', message: 'Username already exists' }));
+        } else {
+          users.set(data.username, { id: userId, ws: ws });
+          ws.send(JSON.stringify({ type: 'register', status: 'success', username: data.username }));
+        }
         break;
       case 'message':
         const recipient = users.get(data.to);
         if (recipient) {
-          recipient.send(JSON.stringify({ type: 'message', from: data.from, text: data.text }));
+          recipient.ws.send(JSON.stringify({ type: 'message', from: data.from, text: data.text }));
         }
         break;
       default:
@@ -30,9 +36,9 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    for (const [id, socket] of users.entries()) {
-      if (socket === ws) {
-        users.delete(id);
+    for (const [username, user] of users.entries()) {
+      if (user.ws === ws) {
+        users.delete(username);
         break;
       }
     }
